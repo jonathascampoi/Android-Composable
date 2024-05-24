@@ -250,11 +250,16 @@ fun ReorderWhenDrag(state: State) {
                             }
                     },
                     onDrag = { change, dragAmount ->
-                        change.consumeAllChanges()
+                        change.consume()
                         position = position?.plus(dragAmount.y)
                         // Start autoscrolling if position is out of bounds
                     },
                     onDragEnd = {
+                        state.updateIndexWithOffset(null)
+                        position = null
+                        draggedItem = null
+                    },
+                    onDragCancel = {
                         state.updateIndexWithOffset(null)
                         position = null
                         draggedItem = null
@@ -265,10 +270,22 @@ fun ReorderWhenDrag(state: State) {
         coroutineScope.launch {
             snapshotFlow { listState.layoutInfo }
                 .combine(snapshotFlow { position }.distinctUntilChanged()) { state, pos ->
-                    pos?.let { draggedCenter ->
+                    val idx = pos?.let { draggedCenter ->
                         state.visibleItemsInfo
                             .minByOrNull { (draggedCenter - (it.offset + it.size / 2f)).absoluteValue }
                     }?.index
+
+                    when {
+                        idx != null -> coroutineScope.launch {
+                            autoScroll(
+                                state.visibleItemsInfo.first().index,
+                                state.visibleItemsInfo.last().index,
+                                idx,
+                                listState
+                            )
+                        }
+                    }
+                    idx
                 }
                 .distinctUntilChanged()
                 .collect { near ->
@@ -309,5 +326,22 @@ fun ReorderWhenDrag(state: State) {
             }
         }
 
+    }
+}
+
+suspend fun autoScroll(
+    fidx: Int,
+    lidx: Int,
+    idx: Int,
+    listState: LazyListState
+) {
+    if ((fidx + 2) == idx && listState.canScrollBackward) {
+        listState.animateScrollToItem(fidx - 1, -10)
+    } else if ((fidx + 1) == idx && listState.canScrollBackward) {
+        listState.animateScrollToItem(fidx - 2, -10)
+    } else if ((lidx - 2) == idx && listState.canScrollForward) {
+        listState.animateScrollToItem(lidx + 1)
+    } else if ((lidx - 1) == idx && listState.canScrollForward) {
+        listState.animateScrollToItem(lidx + 2)
     }
 }
