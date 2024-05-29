@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -33,33 +32,26 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.example.androidcomposable.ui.theme.AndroidComposableTheme
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -198,15 +190,10 @@ fun generateItemList(): MutableList<String> {
 
 
 fun <T> MutableList<T>.move(fromIdx: Int, toIdx: Int) {
-    if (toIdx > fromIdx) {
-        for (i in fromIdx until toIdx) {
-            this[i] = this[i + 1].also { this[i + 1] = this[i] }
-        }
-    } else {
-        for (i in fromIdx downTo toIdx + 1) {
-            this[i] = this[i - 1].also { this[i - 1] = this[i] }
-        }
-    }
+    if (fromIdx == toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= size || toIdx >= size) return
+
+    val item = removeAt(fromIdx)
+    add(toIdx, item)
 }
 
 class State {
@@ -225,6 +212,7 @@ private val _uiState = State()
 
 @Composable
 fun ReorderWhenDrag(state: State) {
+
     val itemList by state.itemList.collectAsState()
     val indexWithOffset by state.indexWithOffset.collectAsState()
 
@@ -253,6 +241,9 @@ fun ReorderWhenDrag(state: State) {
                         change.consume()
                         position = position?.plus(dragAmount.y)
                         // Start autoscrolling if position is out of bounds
+//                        if (change.isOutOfBounds(size= calculateMainAxisPageSize(), extendedTouchPadding= )){
+//                              change.
+//                        }
                     },
                     onDragEnd = {
                         state.updateIndexWithOffset(null)
@@ -270,33 +261,16 @@ fun ReorderWhenDrag(state: State) {
         coroutineScope.launch {
             snapshotFlow { listState.layoutInfo }
                 .combine(snapshotFlow { position }.distinctUntilChanged()) { state, pos ->
-                    val idx = pos?.let { draggedCenter ->
+                    pos?.let { draggedCenter ->
                         state.visibleItemsInfo
                             .minByOrNull { (draggedCenter - (it.offset + it.size / 2f)).absoluteValue }
                     }?.index
-
-                    when {
-                        idx != null -> coroutineScope.launch {
-                            autoScroll(
-                                state.visibleItemsInfo.first().index,
-                                state.visibleItemsInfo.last().index,
-                                idx,
-                                listState
-                            )
-                        }
-                    }
-                    idx
                 }
                 .distinctUntilChanged()
                 .collect { near ->
-
-                    draggedItem = when {
-                        near == null -> null
-                        draggedItem == null -> near
-                        else -> near.also {
-                            itemList.move(draggedItem!!, it)
-                        }
-                    }
+                    if (near == null || near == draggedItem) return@collect
+                    draggedItem?.let { itemList.move(it, near) }
+                    draggedItem = near
                 }
         }
 
