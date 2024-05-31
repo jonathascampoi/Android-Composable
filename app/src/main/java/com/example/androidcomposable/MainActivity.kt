@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.draggable
@@ -42,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -49,6 +51,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.example.androidcomposable.ui.theme.AndroidComposableTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -224,6 +228,7 @@ fun ReorderWhenDrag(state: State) {
         mutableStateOf<Int?>(null)
     }
     val coroutineScope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
 
     LazyColumn(
         state = listState,
@@ -240,20 +245,41 @@ fun ReorderWhenDrag(state: State) {
                     onDrag = { change, dragAmount ->
                         change.consume()
                         position = position?.plus(dragAmount.y)
-                        // Start autoscrolling if position is out of bounds
-//                        if (change.isOutOfBounds(size= calculateMainAxisPageSize(), extendedTouchPadding= )){
-//                              change.
+                        val extendedTouchPadding = Size(400f, 400f) // Exemplo de padding estendido
+                        println("extendedTouchPadding: $extendedTouchPadding")
+//                        if (change.isOutOfBounds(size, extendedTouchPadding)) {
+                            when {
+                                change.position.y <= extendedTouchPadding.height -> {
+                                    scrollJob = coroutineScope.launch {
+                                        while (true) {
+                                            listState.animateScrollBy(-200f) // Scroll para cima
+                                            delay(50)
+                                        }
+                                    }
+                                }
+                                change.position.y >= size.height - extendedTouchPadding.height -> {
+                                    scrollJob = coroutineScope.launch {
+                                        while (true) {
+                                            listState.animateScrollBy(200f) // Scroll para baixo
+                                            delay(50)
+                                        }
+                                    }
+                                }
+                                else -> scrollJob?.cancel()
+                            }
 //                        }
                     },
                     onDragEnd = {
                         state.updateIndexWithOffset(null)
                         position = null
                         draggedItem = null
+                        scrollJob?.cancel()
                     },
                     onDragCancel = {
                         state.updateIndexWithOffset(null)
                         position = null
                         draggedItem = null
+                        scrollJob?.cancel()
                     }
                 )
             }
@@ -300,22 +326,5 @@ fun ReorderWhenDrag(state: State) {
             }
         }
 
-    }
-}
-
-suspend fun autoScroll(
-    fidx: Int,
-    lidx: Int,
-    idx: Int,
-    listState: LazyListState
-) {
-    if ((fidx + 2) == idx && listState.canScrollBackward) {
-        listState.animateScrollToItem(fidx - 1, -10)
-    } else if ((fidx + 1) == idx && listState.canScrollBackward) {
-        listState.animateScrollToItem(fidx - 2, -10)
-    } else if ((lidx - 2) == idx && listState.canScrollForward) {
-        listState.animateScrollToItem(lidx + 1)
-    } else if ((lidx - 1) == idx && listState.canScrollForward) {
-        listState.animateScrollToItem(lidx + 2)
     }
 }
